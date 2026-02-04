@@ -89,6 +89,11 @@ def find_deepseek_model(config: dict, custom_path: str = None) -> str:
 
 def find_venv_python() -> str:
     """Find Python executable in venv_qwen."""
+    # Check env var first (for Docker)
+    env_venv = os.environ.get('OCR_VENV_PYTHON')
+    if env_venv and os.path.exists(env_venv):
+        return env_venv
+
     script_dir = Path(__file__).parent
     venv_python = script_dir / "venv_qwen" / "bin" / "python3"
 

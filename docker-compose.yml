@@ -1,0 +1,12 @@
+services:
+  ocr:
+    build: .
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - OCR_CLASSIFIER=qwen3-vl-8b
+      - OCR_DESCRIBE_DIAGRAMS=false
+    volumes:
+      - /workspace/models:/workspace/models:ro
+      - ./input:/data/input:ro
+      - ./output:/data/output
