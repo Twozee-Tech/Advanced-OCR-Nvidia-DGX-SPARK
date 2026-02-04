@@ -93,10 +93,11 @@ def load_model(model_path: str = None, precision: str = "fp16", verbose: bool = 
         else:
             dtype = torch.float16
 
+        # Force GPU loading
         model = Qwen3VLForConditionalGeneration.from_pretrained(
             model_id,
             torch_dtype=dtype,
-            device_map="auto",
+            device_map="cuda:0",
             trust_remote_code=True,
             local_files_only=local_only,
         )
