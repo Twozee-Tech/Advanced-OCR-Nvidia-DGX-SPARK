@@ -1,8 +1,9 @@
 #!/bin/bash
-# OCR Pipeline - One Line Installer
+# OCR Pipeline - One Line Installer v1.1
 # Usage: curl -fsSL https://raw.githubusercontent.com/Twozee-Tech/OCR-Pipeline/main/install.sh | bash
 #
 # Installs a single 'ocr' command - no repo files left behind
+VERSION="1.1"
 
 set -e
 
@@ -17,14 +18,16 @@ REPO_RAW="https://raw.githubusercontent.com/Twozee-Tech/OCR-Pipeline/main"
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
-# Function to read input (works even when piped)
+# Function to read input - works even when script is piped
 ask() {
     local prompt="$1"
     local default="$2"
     local reply
 
-    echo -n "$prompt" >/dev/tty
-    read reply </dev/tty
+    # Print prompt to terminal
+    printf "%s" "$prompt" > /dev/tty
+    # Read from terminal
+    read -r reply < /dev/tty
 
     if [ -z "$reply" ]; then
         echo "$default"
@@ -35,7 +38,7 @@ ask() {
 
 echo -e "${BLUE}"
 echo "=============================================="
-echo "       OCR Pipeline - Installer              "
+echo "       OCR Pipeline - Installer v${VERSION}      "
 echo "=============================================="
 echo -e "${NC}"
 
