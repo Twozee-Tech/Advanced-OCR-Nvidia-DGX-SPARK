@@ -3,7 +3,7 @@
 # Usage: curl -fsSL https://raw.githubusercontent.com/Twozee-Tech/OCR-Pipeline/main/install.sh | bash
 #
 # Installs a single 'ocr' command - no repo files left behind
-VERSION="1.3"
+VERSION="1.4"
 
 set -e
 
@@ -285,6 +285,7 @@ echo "  Output: \$OUTPUT_DIR/\$OUTPUT_NAME"
 echo ""
 
 docker run --rm --gpus all \\
+    --user \$(id -u):\$(id -g) \\
     -v "\$MODELS_DIR:/workspace/models:ro" \\
     -v "\$INPUT_DIR:/data/input:ro" \\
     -v "\$OUTPUT_DIR:/data/output" \\
