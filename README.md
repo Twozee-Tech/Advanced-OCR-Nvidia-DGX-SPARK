@@ -2,17 +2,24 @@
 
 AI-powered PDF to Markdown conversion using vision-language models. Combines Qwen3-VL for intelligent page classification with DeepSeek-OCR for content extraction.
 
-## Quick Install
+## Install
+
+One command installs everything. The interactive installer will guide you through model selection and configuration.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Twozee-Tech/Advanced-OCR-Nvidia-DGX-SPARK/main/install.sh | bash
 ```
 
-This will:
-- Ask where to store models (~24GB for recommended setup)
-- Download required AI models
-- Build the Docker image
-- Install the `ocr` command
+[View install.sh source](https://github.com/Twozee-Tech/Advanced-OCR-Nvidia-DGX-SPARK/blob/main/install.sh)
+
+**What it does:**
+- Checks Docker and GPU availability
+- Asks where to store models (default: `~/.cache/ocr-models`)
+- Downloads AI models from HuggingFace (~24GB for recommended setup)
+- Builds the Docker image
+- Installs the `ocr` command to `~/.local/bin`
+
+No Python installation required on the host - everything runs in Docker.
 
 ## Usage
 
