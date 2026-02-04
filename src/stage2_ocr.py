@@ -278,7 +278,8 @@ def ocr_page(model, tokenizer, image: Image.Image, classification: dict,
 
 
 def ocr_pages(model, tokenizer, pages: list, classifications: list,
-              output_dir: str = None, verbose: bool = False) -> list:
+              output_dir: str = None, verbose: bool = False,
+              progress_callback=None) -> list:
     """
     Run OCR on all pages.
 
@@ -289,6 +290,7 @@ def ocr_pages(model, tokenizer, pages: list, classifications: list,
         classifications: List of classifications from Stage 1
         output_dir: Output directory for figures
         verbose: Print progress
+        progress_callback: Optional callback(page_num, total) for progress updates
 
     Returns:
         list: OCR results for each page
@@ -301,6 +303,10 @@ def ocr_pages(model, tokenizer, pages: list, classifications: list,
             page_start = time.time()
             content_type = classification.get('type', 'mixed')
             confidence = classification.get('confidence', 0)
+
+            # Report progress
+            if progress_callback:
+                progress_callback(i + 1, len(pages))
 
             if verbose:
                 print(f"\n--- Page {i+1}/{len(pages)} [{content_type} @ {confidence:.0%}] ---")

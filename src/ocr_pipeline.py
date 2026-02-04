@@ -23,7 +23,55 @@ import os
 import time
 import argparse
 import subprocess
+import shutil
 from pathlib import Path
+
+
+# =============================================================================
+# Progress Bar
+# =============================================================================
+
+class ProgressBar:
+    """Simple terminal progress bar."""
+
+    def __init__(self, total: int, width: int = 40, prefix: str = "Progress"):
+        self.total = total
+        self.width = width
+        self.prefix = prefix
+        self.current = 0
+        self.stage = ""
+        self.enabled = True
+
+    def update(self, current: int = None, stage: str = None):
+        """Update progress bar."""
+        if not self.enabled:
+            return
+
+        if current is not None:
+            self.current = current
+        if stage is not None:
+            self.stage = stage
+
+        percent = min(100, int(100 * self.current / self.total)) if self.total > 0 else 0
+        filled = int(self.width * percent / 100)
+        bar = "█" * filled + "░" * (self.width - filled)
+
+        # Clear line and print progress
+        stage_text = f" | {self.stage}" if self.stage else ""
+        sys.stdout.write(f"\r{self.prefix}: [{bar}] {percent:3d}%{stage_text}    ")
+        sys.stdout.flush()
+
+    def increment(self, amount: int = 1, stage: str = None):
+        """Increment progress."""
+        self.update(self.current + amount, stage)
+
+    def finish(self, message: str = "Done!"):
+        """Complete the progress bar."""
+        if not self.enabled:
+            return
+        self.current = self.total
+        self.update()
+        print(f"\n{message}")
 
 # Stage 2 imports (system Python)
 from stage2_ocr import (
@@ -295,24 +343,45 @@ def run_pipeline(
     output_dir = output_path.parent / f"{output_path.stem}_assets"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("=" * 60)
-    print("OCR Pipeline - Three-Stage Processing")
-    print("=" * 60)
-    print(f"Input:            {pdf_path}")
-    print(f"Output:           {output_path}")
-    print(f"Assets:           {output_dir}")
-    print(f"Classifier:       {classifier} ({classifier_precision})")
-    print(f"Describe diagrams: {describe_diagrams}")
-    print()
+    # Show header
+    if verbose:
+        print("=" * 60)
+        print("OCR Pipeline - Three-Stage Processing")
+        print("=" * 60)
+        print(f"Input:            {pdf_path}")
+        print(f"Output:           {output_path}")
+        print(f"Assets:           {output_dir}")
+        print(f"Classifier:       {classifier} ({classifier_precision})")
+        print(f"Describe diagrams: {describe_diagrams}")
+        print()
+    else:
+        print(f"OCR: {pdf_path.name} → {output_path.name}")
 
     total_start = time.time()
+
+    # Get page count for progress tracking (quick PDF open)
+    import fitz
+    with fitz.open(str(pdf_path)) as pdf:
+        num_pages = pdf.page_count
+
+    # Calculate total steps: Stage1 + Stage1.5(optional) + Stage2 + Final
+    # Weight: Stage1=1x, Stage1.5=1x per diagram, Stage2=2x per page (slower), Final=1
+    total_steps = num_pages + (num_pages * 2) + 1  # Stage1 + Stage2 + Final
+    if describe_diagrams:
+        total_steps += num_pages // 2  # Estimate ~50% might be diagrams
+
+    progress = ProgressBar(total_steps, prefix="OCR")
+    progress.enabled = not verbose
 
     # =========================================================================
     # Stage 1: Classification (subprocess in venv)
     # =========================================================================
-    print("=" * 60)
-    print("STAGE 1: Page Classification")
-    print("=" * 60)
+    if verbose:
+        print("=" * 60)
+        print("STAGE 1: Page Classification")
+        print("=" * 60)
+
+    progress.update(0, "Stage 1: Classifying pages")
 
     classifications_file = output_dir / "classifications.json"
     qwen_path = qwen_model_path or config.get('qwen_model_path')
@@ -328,7 +397,7 @@ def run_pipeline(
     )
 
     if not success:
-        print("ERROR: Stage 1 failed. Aborting pipeline.")
+        print("\nERROR: Stage 1 failed. Aborting pipeline.")
         sys.exit(1)
 
     # Load classifications
@@ -338,13 +407,16 @@ def run_pipeline(
     classifications = class_data.get('classifications', [])
     classifier_method = class_data.get('method', 'unknown')
 
-    # Print summary
-    content_types = {}
-    for c in classifications:
-        ct = c.get('type', 'unknown')
-        content_types[ct] = content_types.get(ct, 0) + 1
-    print(f"\nContent types: {content_types}")
-    print(f"Classifications saved to: {classifications_file}")
+    progress.increment(num_pages, "Stage 1: Complete")
+
+    # Print summary (verbose only)
+    if verbose:
+        content_types = {}
+        for c in classifications:
+            ct = c.get('type', 'unknown')
+            content_types[ct] = content_types.get(ct, 0) + 1
+        print(f"\nContent types: {content_types}")
+        print(f"Classifications saved to: {classifications_file}")
 
     # =========================================================================
     # Stage 1.5: Diagram Description (optional)
@@ -359,10 +431,12 @@ def run_pipeline(
                      or (c.get('type', '').lower() == 'mixed' and c.get('has_diagrams', False))]
 
     if describe_diagrams and diagram_pages:
-        print("\n" + "=" * 60)
-        print(f"STAGE 1.5: Diagram Description ({len(diagram_pages)} pages)")
-        print("=" * 60)
+        if verbose:
+            print("\n" + "=" * 60)
+            print(f"STAGE 1.5: Diagram Description ({len(diagram_pages)} pages)")
+            print("=" * 60)
 
+        progress.update(stage=f"Stage 1.5: Describing {len(diagram_pages)} diagrams")
         describer_path = qwen_describer_path or config.get('qwen_describer_path')
 
         success = run_stage1_5_subprocess(
@@ -381,27 +455,35 @@ def run_pipeline(
             # Convert string keys to int for page numbers
             raw_descriptions = desc_data.get('descriptions', {})
             diagram_descriptions = {int(k): v for k, v in raw_descriptions.items()}
-            print(f"Loaded {len(diagram_descriptions)} diagram descriptions")
+            if verbose:
+                print(f"Loaded {len(diagram_descriptions)} diagram descriptions")
         else:
-            print("No diagram descriptions generated (Stage 1.5 skipped or failed)")
+            if verbose:
+                print("No diagram descriptions generated (Stage 1.5 skipped or failed)")
+
+        progress.increment(len(diagram_pages), "Stage 1.5: Complete")
 
     elif describe_diagrams and not diagram_pages:
-        print("\nNo diagram/flowchart pages found - skipping Stage 1.5")
+        if verbose:
+            print("\nNo diagram/flowchart pages found - skipping Stage 1.5")
 
-    elif diagram_pages:
+    elif diagram_pages and verbose:
         print(f"\nNote: Found {len(diagram_pages)} diagram pages. Use --describe-diagrams for better output.")
 
     # =========================================================================
     # Stage 2: OCR Processing (system Python)
     # =========================================================================
-    print("\n" + "=" * 60)
-    print("STAGE 2: OCR Processing (DeepSeek-OCR)")
-    print("=" * 60)
+    if verbose:
+        print("\n" + "=" * 60)
+        print("STAGE 2: OCR Processing (DeepSeek-OCR)")
+        print("=" * 60)
+
+    progress.update(stage="Stage 2: Loading OCR model")
 
     # Find DeepSeek model
     deepseek_path = find_deepseek_model(config, deepseek_model_path)
     if deepseek_path is None:
-        print("ERROR: DeepSeek-OCR model not found.")
+        print("\nERROR: DeepSeek-OCR model not found.")
         print("Download: git clone https://huggingface.co/deepseek-ai/DeepSeek-OCR DeepSeek-OCR-model")
         sys.exit(1)
 
@@ -409,11 +491,13 @@ def run_pipeline(
     ocr_model, tokenizer = load_ocr(deepseek_path, verbose=verbose)
 
     # Convert PDF to images (for Stage 2)
+    progress.update(stage="Stage 2: Converting PDF")
     pages = pdf_to_page_images(str(pdf_path), dpi=dpi, verbose=verbose)
 
     # Validate classification count
     if len(classifications) != len(pages):
-        print(f"WARNING: Classification count mismatch ({len(classifications)} vs {len(pages)} pages)")
+        if verbose:
+            print(f"WARNING: Classification count mismatch ({len(classifications)} vs {len(pages)} pages)")
         # Pad or truncate
         while len(classifications) < len(pages):
             classifications.append({
@@ -423,22 +507,35 @@ def run_pipeline(
                 'method': 'default'
             })
 
-    # Run OCR
-    print(f"\nProcessing {len(pages)} pages...")
+    # Run OCR with progress callback
+    if verbose:
+        print(f"\nProcessing {len(pages)} pages...")
+
+    def ocr_progress(page_num, total):
+        progress.update(
+            num_pages + (page_num * 2),
+            f"Stage 2: OCR page {page_num}/{total}"
+        )
+
     results = ocr_pages(
         ocr_model, tokenizer, pages, classifications,
-        str(output_dir), verbose
+        str(output_dir), verbose,
+        progress_callback=None if verbose else ocr_progress
     )
 
     # Unload model
     unload_ocr(ocr_model, tokenizer, verbose=verbose)
+    progress.increment(num_pages * 2, "Stage 2: Complete")
 
     # =========================================================================
     # Generate Output
     # =========================================================================
-    print("\n" + "=" * 60)
-    print("Generating Output")
-    print("=" * 60)
+    progress.update(stage="Generating output")
+
+    if verbose:
+        print("\n" + "=" * 60)
+        print("Generating Output")
+        print("=" * 60)
 
     markdown = generate_markdown(
         results, pdf_path.stem, classifier_method,
@@ -448,6 +545,8 @@ def run_pipeline(
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(markdown)
 
+    progress.increment(1)
+
     # =========================================================================
     # Summary
     # =========================================================================
@@ -455,20 +554,23 @@ def run_pipeline(
     total_chars = sum(len(r.get('text', '')) for r in results)
     total_figures = sum(len(r.get('figures', [])) for r in results)
 
-    print(f"\nCompleted in {total_time:.1f}s ({total_time/len(pages):.1f}s per page)")
-    print(f"Total characters: {total_chars}")
-    print(f"Figures extracted: {total_figures}")
-    print(f"Output: {output_path}")
-
     # Cleanup assets unless --keep-assets
     if not keep_assets and output_dir.exists():
-        import shutil
         shutil.rmtree(output_dir)
-        print(f"Cleaned up: {output_dir}")
-    elif keep_assets:
-        print(f"Assets kept: {output_dir}")
 
-    print("=" * 60)
+    # Final message
+    progress.finish(f"Done in {total_time:.1f}s → {output_path}")
+
+    if verbose:
+        print(f"\nCompleted in {total_time:.1f}s ({total_time/len(pages):.1f}s per page)")
+        print(f"Total characters: {total_chars}")
+        print(f"Figures extracted: {total_figures}")
+        print(f"Output: {output_path}")
+        if not keep_assets:
+            print(f"Cleaned up: {output_dir}")
+        else:
+            print(f"Assets kept: {output_dir}")
+        print("=" * 60)
 
     return str(output_path)
 
