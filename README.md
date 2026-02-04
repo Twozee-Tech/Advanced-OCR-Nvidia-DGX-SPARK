@@ -5,7 +5,7 @@ AI-powered PDF to Markdown conversion using vision-language models. Combines Qwe
 ## Quick Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Twozee-Tech/OCR-Pipeline/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Twozee-Tech/Advanced-OCR-Nvidia-DGX-SPARK/main/install.sh | bash
 ```
 
 This will:
@@ -83,7 +83,7 @@ cat ~/.local/bin/ocr | head -5
 ## Reinstall / Update
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Twozee-Tech/OCR-Pipeline/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Twozee-Tech/Advanced-OCR-Nvidia-DGX-SPARK/main/install.sh | bash
 ```
 
 ## Uninstall
@@ -100,7 +100,7 @@ rm -rf ~/.cache/ocr-models
 For development or customization:
 
 ```bash
-git clone https://github.com/Twozee-Tech/OCR-Pipeline.git
+git clone https://github.com/Twozee-Tech/Advanced-OCR-Nvidia-DGX-SPARK.git
 cd OCR-Pipeline
 ./setup.sh
 ```

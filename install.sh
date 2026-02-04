@@ -1,6 +1,6 @@
 #!/bin/bash
-# OCR Pipeline - One Line Installer v1.1
-# Usage: curl -fsSL https://raw.githubusercontent.com/Twozee-Tech/OCR-Pipeline/main/install.sh | bash
+# Advanced OCR for NVIDIA DGX Spark - Installer v1.5
+# Usage: curl -fsSL https://raw.githubusercontent.com/Twozee-Tech/Advanced-OCR-Nvidia-DGX-SPARK/main/install.sh | bash
 #
 # Installs a single 'ocr' command - no repo files left behind
 VERSION="1.5"
@@ -14,7 +14,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-REPO_RAW="https://raw.githubusercontent.com/Twozee-Tech/OCR-Pipeline/main"
+REPO_RAW="https://raw.githubusercontent.com/Twozee-Tech/Advanced-OCR-Nvidia-DGX-SPARK/main"
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
