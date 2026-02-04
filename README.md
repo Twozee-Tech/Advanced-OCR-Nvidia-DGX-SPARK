@@ -65,6 +65,48 @@ python ocr_pipeline.py document.pdf --classifier qwen3-vl-8b
 python ocr_pipeline.py document.pdf --classifier qwen3-vl-8b --describe-diagrams
 ```
 
+## Docker
+
+### Build
+```bash
+docker build -t ocr-pipeline .
+```
+
+### Run with wrapper script
+```bash
+./ocr.sh /path/to/document.pdf              # Basic OCR
+./ocr.sh /path/to/document.pdf --diagrams   # With diagram description
+```
+
+### Run directly
+```bash
+# Basic
+docker run --gpus all --rm \
+    -v /workspace/models:/workspace/models:ro \
+    -v $(pwd):/data/input:ro \
+    -v $(pwd)/output:/data/output \
+    -e OCR_INPUT_PDF=/data/input/document.pdf \
+    ocr-pipeline
+
+# With diagram description
+docker run --gpus all --rm \
+    -e OCR_DESCRIBE_DIAGRAMS=true \
+    -v /workspace/models:/workspace/models:ro \
+    -v $(pwd):/data/input:ro \
+    -v $(pwd)/output:/data/output \
+    -e OCR_INPUT_PDF=/data/input/document.pdf \
+    ocr-pipeline
+```
+
+### Environment Variables
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OCR_INPUT_PDF` | auto-detect | Input PDF path |
+| `OCR_DESCRIBE_DIAGRAMS` | `false` | Enable Stage 1.5 |
+| `OCR_CLASSIFIER` | `qwen3-vl-8b` | Classifier model |
+| `OCR_PRECISION` | `fp16` | Model precision |
+| `OCR_DPI` | `200` | PDF render DPI |
+
 ## CLI Options
 
 ### ocr_pipeline.py (Main)
