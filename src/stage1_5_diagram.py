@@ -103,6 +103,7 @@ def load_model(model_path: str = None, precision: str = "fp16", verbose: bool = 
             dtype = torch.bfloat16
 
         # Force GPU loading with Flash Attention 2 for speed
+        # low_cpu_mem_usage prevents staging weights in CPU RAM (important for unified memory)
         model = Qwen3VLForConditionalGeneration.from_pretrained(
             model_id,
             torch_dtype=dtype,
@@ -110,6 +111,7 @@ def load_model(model_path: str = None, precision: str = "fp16", verbose: bool = 
             attn_implementation="flash_attention_2",
             trust_remote_code=True,
             local_files_only=local_only,
+            low_cpu_mem_usage=True,
         )
         model.eval()
 
