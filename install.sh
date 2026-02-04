@@ -3,7 +3,7 @@
 # Usage: curl -fsSL https://raw.githubusercontent.com/Twozee-Tech/OCR-Pipeline/main/install.sh | bash
 #
 # Installs a single 'ocr' command - no repo files left behind
-VERSION="1.1"
+VERSION="1.2"
 
 set -e
 
@@ -97,29 +97,62 @@ echo "    2) Qwen3-VL-8B         (~16GB) - Classification (recommended)"
 echo "    3) Qwen3-VL-32B        (~65GB) - Diagrams (optional)"
 echo ""
 
-DEEPSEEK_PATH="$MODELS_DIR/DeepSeek-OCR-2-model"
-QWEN8B_PATH="$MODELS_DIR/Qwen3-VL-8B-model"
-QWEN32B_PATH="$MODELS_DIR/Qwen3-VL-32B-Thinking"
+# Function to check if a directory contains a valid model (has config.json and weights)
+is_valid_model() {
+    local dir="$1"
+    [ -d "$dir" ] && [ -f "$dir/config.json" ] && \
+    (ls "$dir"/*.safetensors >/dev/null 2>&1 || ls "$dir"/*.bin >/dev/null 2>&1)
+}
 
-[ -d "$DEEPSEEK_PATH" ] && echo -e "  ${GREEN}✓${NC} DeepSeek-OCR-2 already installed"
-[ -d "$QWEN8B_PATH" ] && echo -e "  ${GREEN}✓${NC} Qwen3-VL-8B already installed"
-[ -d "$QWEN32B_PATH" ] && echo -e "  ${GREEN}✓${NC} Qwen3-VL-32B already installed"
+# Function to find model in common locations/names
+find_model() {
+    local base_dir="$1"
+    local patterns="$2"  # comma-separated patterns
+
+    IFS=',' read -ra PATTERNS <<< "$patterns"
+    for pattern in "${PATTERNS[@]}"; do
+        for dir in "$base_dir"/$pattern; do
+            if is_valid_model "$dir"; then
+                echo "$dir"
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+# Search for models with various naming conventions
+DEEPSEEK_PATTERNS="DeepSeek-OCR*,deepseek-ocr*,deepseek*OCR*"
+QWEN8B_PATTERNS="Qwen3-VL-8B*,Qwen*8B*,qwen*8b*"
+QWEN32B_PATTERNS="Qwen3-VL-32B*,Qwen*32B*,qwen*32b*"
+
+DEEPSEEK_PATH=$(find_model "$MODELS_DIR" "$DEEPSEEK_PATTERNS" 2>/dev/null || echo "")
+QWEN8B_PATH=$(find_model "$MODELS_DIR" "$QWEN8B_PATTERNS" 2>/dev/null || echo "")
+QWEN32B_PATH=$(find_model "$MODELS_DIR" "$QWEN32B_PATTERNS" 2>/dev/null || echo "")
+
+# Show what's found
+[ -n "$DEEPSEEK_PATH" ] && echo -e "  ${GREEN}✓${NC} DeepSeek-OCR-2 found: $(basename "$DEEPSEEK_PATH")"
+[ -n "$QWEN8B_PATH" ] && echo -e "  ${GREEN}✓${NC} Qwen3-VL-8B found: $(basename "$QWEN8B_PATH")"
+[ -n "$QWEN32B_PATH" ] && echo -e "  ${GREEN}✓${NC} Qwen3-VL-32B found: $(basename "$QWEN32B_PATH")"
 echo ""
 
 DL_DEEPSEEK="n"
 DL_QWEN8B="n"
 DL_QWEN32B="n"
 
-if [ ! -d "$DEEPSEEK_PATH" ]; then
+if [ -z "$DEEPSEEK_PATH" ]; then
     DL_DEEPSEEK=$(ask "  Download DeepSeek-OCR-2? (required) [Y/n]: " "Y")
+    DEEPSEEK_PATH="$MODELS_DIR/DeepSeek-OCR-2-model"
 fi
 
-if [ ! -d "$QWEN8B_PATH" ]; then
+if [ -z "$QWEN8B_PATH" ]; then
     DL_QWEN8B=$(ask "  Download Qwen3-VL-8B? (recommended) [Y/n]: " "Y")
+    QWEN8B_PATH="$MODELS_DIR/Qwen3-VL-8B-model"
 fi
 
-if [ ! -d "$QWEN32B_PATH" ]; then
+if [ -z "$QWEN32B_PATH" ]; then
     DL_QWEN32B=$(ask "  Download Qwen3-VL-32B? (65GB, optional) [y/N]: " "N")
+    QWEN32B_PATH="$MODELS_DIR/Qwen3-VL-32B-Thinking"
 fi
 
 if [[ "$DL_DEEPSEEK" =~ ^[Yy] ]] || [[ "$DL_QWEN8B" =~ ^[Yy] ]] || [[ "$DL_QWEN32B" =~ ^[Yy] ]]; then
@@ -153,14 +186,29 @@ fi
 echo ""
 echo -e "${YELLOW}[4/5] Building Docker image...${NC}"
 
-# Download only the files needed for Docker build
+# Download files needed for Docker build
 curl -fsSL "$REPO_RAW/Dockerfile" -o "$TEMP_DIR/Dockerfile"
-curl -fsSL "$REPO_RAW/ocr_config.json" -o "$TEMP_DIR/ocr_config.json"
 curl -fsSL "$REPO_RAW/entrypoint.py" -o "$TEMP_DIR/entrypoint.py"
 curl -fsSL "$REPO_RAW/ocr_pipeline.py" -o "$TEMP_DIR/ocr_pipeline.py"
 curl -fsSL "$REPO_RAW/stage1_classifier.py" -o "$TEMP_DIR/stage1_classifier.py"
 curl -fsSL "$REPO_RAW/stage1_5_diagram.py" -o "$TEMP_DIR/stage1_5_diagram.py"
 curl -fsSL "$REPO_RAW/stage2_ocr.py" -o "$TEMP_DIR/stage2_ocr.py"
+
+# Generate config with actual model paths (relative to /workspace/models inside container)
+DEEPSEEK_NAME=$(basename "$DEEPSEEK_PATH")
+QWEN8B_NAME=$(basename "$QWEN8B_PATH")
+QWEN32B_NAME=$(basename "$QWEN32B_PATH")
+
+cat > "$TEMP_DIR/ocr_config.json" << CONFIGEOF
+{
+    "deepseek_model_path": "/workspace/models/$DEEPSEEK_NAME",
+    "qwen_model_path": "/workspace/models/$QWEN8B_NAME",
+    "qwen_describer_path": "/workspace/models/$QWEN32B_NAME",
+    "classifier": "qwen3-vl-8b",
+    "precision": "fp16",
+    "describe_diagrams": false
+}
+CONFIGEOF
 
 docker build -t ocr-pipeline "$TEMP_DIR"
 echo -e "  ${GREEN}✓${NC} Docker image built"
