@@ -118,15 +118,16 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
-    # Try flash_attention_2 first, fall back to eager if not available
+    # Load model following official example:
+    # https://huggingface.co/deepseek-ai/DeepSeek-OCR-2
+    # model = model.eval().cuda().to(torch.bfloat16)
     try:
         model = AutoModel.from_pretrained(
             model_path,
             trust_remote_code=True,
-            torch_dtype=torch.bfloat16,
-            device_map='auto',
             _attn_implementation='flash_attention_2',
-        ).eval()
+            use_safetensors=True,
+        )
         if args.verbose:
             print(f"  Using flash_attention_2", flush=True)
     except Exception as e:
@@ -136,10 +137,15 @@ def main():
         model = AutoModel.from_pretrained(
             model_path,
             trust_remote_code=True,
-            torch_dtype=torch.bfloat16,
-            device_map='auto',
             _attn_implementation='eager',
-        ).eval()
+            use_safetensors=True,
+        )
+
+    # Move to GPU - keep in float32 to avoid cuDNN issues with vision encoder
+    # The model will use autocast internally if needed
+    model = model.eval().cuda()
+    if args.verbose:
+        print(f"  Model on CUDA (float32)", flush=True)
 
     if args.verbose:
         load_time = time.time() - load_start
