@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir \
     Pillow
 
 # Venv for DeepSeek-OCR (transformers 4.47.1)
+# flash-attn for faster inference (optional, falls back to eager)
 RUN python3 -m venv --system-site-packages /opt/venv_ocr && \
     /opt/venv_ocr/bin/pip install --no-cache-dir \
     transformers==4.47.1 \
@@ -14,7 +15,8 @@ RUN python3 -m venv --system-site-packages /opt/venv_ocr && \
     addict \
     matplotlib \
     einops \
-    easydict
+    easydict && \
+    /opt/venv_ocr/bin/pip install --no-cache-dir flash-attn --no-build-isolation || true
 
 COPY src/*.py /app/
 COPY config/ocr_config.json /app/

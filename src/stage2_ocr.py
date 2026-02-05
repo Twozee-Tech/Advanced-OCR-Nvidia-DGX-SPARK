@@ -124,10 +124,21 @@ def ocr_pages(image_paths: list, classifications: list, config: dict,
         start = time.time()
         result = subprocess.run(
             cmd,
-            check=True,
-            capture_output=not verbose,
+            check=False,  # Don't raise, we handle errors manually
+            capture_output=True,
             text=True
         )
+
+        # Print stdout if verbose or on error
+        if result.stdout:
+            print(result.stdout)
+
+        # Check for errors
+        if result.returncode != 0:
+            print(f"ERROR: OCR worker failed with code {result.returncode}")
+            if result.stderr:
+                print(f"STDERR:\n{result.stderr}")
+            raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
 
         if verbose:
             elapsed = time.time() - start
@@ -155,11 +166,8 @@ def ocr_pages(image_paths: list, classifications: list, config: dict,
 
         return cleaned_results
 
-    except subprocess.CalledProcessError as e:
-        print(f"ERROR: OCR worker failed with code {e.returncode}")
-        if e.stderr:
-            print(f"STDERR: {e.stderr}")
-        raise
+    except subprocess.CalledProcessError:
+        raise  # Already printed error above
 
     finally:
         # Cleanup temp files
