@@ -225,11 +225,13 @@ if [ -z "\$1" ]; then
     echo ""
     echo "Options:"
     echo "  --diagrams    Enable detailed diagram description"
+    echo "  -v, --verbose Verbose output (disables progress bar)"
     echo ""
     echo "Examples:"
     echo "  ocr document.pdf                    # Output to ./output/document.md"
     echo "  ocr document.pdf result.md          # Output to ./result.md"
     echo "  ocr document.pdf --diagrams         # With diagram description"
+    echo "  ocr document.pdf -v                 # Verbose output"
     echo ""
     echo "Models: \$MODELS_DIR"
     exit 1
@@ -243,11 +245,13 @@ shift
 
 # Parse arguments
 DESCRIBE_DIAGRAMS="false"
+VERBOSE="false"
 OUTPUT_FILE=""
 
 while [[ \$# -gt 0 ]]; do
     case \$1 in
         --diagrams) DESCRIBE_DIAGRAMS="true"; shift ;;
+        -v|--verbose) VERBOSE="true"; shift ;;
         *.md) OUTPUT_FILE="\$1"; shift ;;
         *) shift ;;
     esac
@@ -281,6 +285,7 @@ docker run --rm --gpus all \\
     -e OCR_INPUT_PDF="/data/input/\$INPUT_BASENAME" \\
     -e OCR_OUTPUT_PATH="/data/output/\$OUTPUT_NAME" \\
     -e OCR_DESCRIBE_DIAGRAMS="\$DESCRIBE_DIAGRAMS" \\
+    -e OCR_VERBOSE="\$VERBOSE" \\
     ocr-pipeline
 
 echo ""

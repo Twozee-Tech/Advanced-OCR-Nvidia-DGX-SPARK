@@ -31,7 +31,9 @@ def main():
         args.append('--describe-diagrams')
 
     args.extend(['--dpi', os.environ.get('OCR_DPI', '200')])
-    args.append('--verbose')
+
+    if os.environ.get('OCR_VERBOSE', 'false').lower() == 'true':
+        args.append('--verbose')
 
     print(f"OCR Pipeline v3.0 starting...")
     print(f"  Input:  {input_pdf}")
