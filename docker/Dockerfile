@@ -3,7 +3,9 @@ FROM nvcr.io/nvidia/vllm:26.01-py3
 RUN pip install --no-cache-dir \
     qwen-vl-utils>=0.0.14 \
     PyMuPDF \
-    Pillow
+    Pillow \
+    addict \
+    matplotlib
 
 COPY src/*.py /app/
 COPY config/ocr_config.json /app/
