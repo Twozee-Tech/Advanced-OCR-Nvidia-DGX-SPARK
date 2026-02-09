@@ -159,6 +159,7 @@ if [[ "$DL_DEEPSEEK" =~ ^[Yy] ]] || [[ "$DL_QWEN30B" =~ ^[Yy] ]]; then
     docker run --rm \
         -v "$MODELS_DIR:/models" \
         -e HF_HOME=/models/.cache \
+        -e HF_TOKEN="${HF_TOKEN:-}" \
         python:3.11-slim \
         bash -c "pip install -q huggingface_hub && $DL_CMDS"
 
