@@ -213,7 +213,7 @@ RUN python3 -m venv --system-site-packages /opt/venv_ocr
 # keeping deps minimal is cleaner).
 RUN /opt/venv_ocr/bin/pip install --no-cache-dir --no-deps transformers==4.46.3 && \
     /opt/venv_ocr/bin/pip install --no-cache-dir \
-    tokenizers \
+    "tokenizers>=0.20,<0.21" \
     accelerate \
     einops \
     easydict \
