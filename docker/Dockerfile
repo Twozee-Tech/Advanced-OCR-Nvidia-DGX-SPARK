@@ -227,8 +227,8 @@ RUN /opt/venv_ocr/bin/pip install --no-cache-dir --no-deps transformers==4.46.3 
     PyMuPDF \
     img2pdf
 
-# flash-attn for DeepSeek-OCR — optional, falls back to eager attention
-RUN /opt/venv_ocr/bin/pip install --no-cache-dir flash-attn --no-build-isolation || true
+# NOTE: flash-attn build removed — it OOMs and crashes DGX Spark.
+# DeepSeek-OCR worker falls back to eager attention automatically.
 
 # ---------------------------------------------------------
 # Application code
