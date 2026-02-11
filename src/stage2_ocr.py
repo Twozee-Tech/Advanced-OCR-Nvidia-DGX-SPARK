@@ -350,18 +350,21 @@ def generate_markdown(results: list, pdf_name: str, method: str = 'transformers'
 
         # Check if we have a Qwen description for this page
         diagram_desc = diagram_descriptions.get(page_num)
-        has_diagrams = classification.get('has_diagrams', False)
-        is_diagram_page = content_type.lower() in diagram_types or (content_type.lower() == 'mixed' and has_diagrams)
+        is_pure_diagram = content_type.lower() in diagram_types
 
-        if diagram_desc and is_diagram_page:
-            # Use Qwen description for diagram pages
+        if diagram_desc and is_pure_diagram:
+            # Pure diagram/flowchart: use only Qwen description, skip DeepSeek OCR
+            # (DeepSeek hallucinates on diagrams — produces incorrect protocol descriptions)
             text = diagram_desc
             page_method = 'qwen3-vl-30b'
             diagrams_used += 1
-
-            # Append DeepSeek text if it found additional content
-            if ocr_text and len(ocr_text.strip()) > 50:
-                text += f"\n\n---\n*Additional OCR text:*\n\n{ocr_text}"
+        elif diagram_desc and content_type.lower() == 'mixed':
+            # Mixed page: OCR text is primary, Qwen diagram description is supplementary
+            text = ocr_text
+            page_method = method
+            if diagram_desc:
+                text += f"\n\n---\n*Diagram description:*\n\n{diagram_desc}"
+                diagrams_used += 1
         else:
             text = ocr_text
             page_method = method
