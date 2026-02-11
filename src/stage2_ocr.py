@@ -222,11 +222,62 @@ def clean_result(text: str, page_num: int, figures: list, classification: dict =
     # Fix table formatting
     text = fix_table_formatting(text)
 
-    # Clean whitespace
-    text = re.sub(r'\n{4,}', '\n\n', text)
+    # Normalize bullet styles: • and ○ → -
+    text = re.sub(r'^(\s*)•\s*', r'\1- ', text, flags=re.MULTILINE)
+    text = re.sub(r'^(\s*)○\s*', r'\1  - ', text, flags=re.MULTILINE)
+
+    # Remove duplicate consecutive paragraphs (fuzzy: >80% similar)
+    text = remove_duplicate_paragraphs(text)
+
+    # Collapse excessive blank lines: 3+ newlines → 2 (one blank line)
+    text = re.sub(r'\n{3,}', '\n\n', text)
     text = text.strip()
 
     return text
+
+
+def remove_duplicate_paragraphs(text: str) -> str:
+    """Remove near-duplicate consecutive paragraphs."""
+    paragraphs = text.split('\n\n')
+    result = []
+
+    for i, para in enumerate(paragraphs):
+        if i == 0:
+            result.append(para)
+            continue
+
+        prev = paragraphs[i - 1].strip()
+        curr = para.strip()
+
+        # Skip empty
+        if not curr:
+            result.append(para)
+            continue
+
+        # Skip if too short to compare meaningfully
+        if len(curr) < 20 or len(prev) < 20:
+            result.append(para)
+            continue
+
+        # Check similarity: if >80% of words overlap, it's a duplicate
+        prev_words = set(prev.lower().split())
+        curr_words = set(curr.lower().split())
+        if not prev_words or not curr_words:
+            result.append(para)
+            continue
+
+        overlap = len(prev_words & curr_words)
+        similarity = overlap / max(len(prev_words), len(curr_words))
+
+        if similarity > 0.8:
+            # Keep the longer one (replace previous if current is longer)
+            if len(curr) > len(prev):
+                result[-1] = para
+            # else skip current (duplicate)
+        else:
+            result.append(para)
+
+    return '\n\n'.join(result)
 
 
 def fix_table_formatting(text: str) -> str:
@@ -373,6 +424,9 @@ def generate_markdown(results: list, pdf_name: str, method: str = 'transformers'
             meta = f"<!-- Page {page_num} | Type: {content_type} | Confidence: {confidence:.0%} | Method: {page_method} -->"
             combined.append(f"{meta}\n\n{text}")
 
+    # Merge page boundaries: join incomplete sentences across pages
+    combined = merge_page_boundaries(combined)
+
     # Build document
     if diagrams_used > 0:
         converter_info = f"Qwen3-VL-30B ({diagrams_used} diagrams) + DeepSeek-OCR (transformers)"
@@ -390,3 +444,88 @@ def generate_markdown(results: list, pdf_name: str, method: str = 'transformers'
     ]
 
     return "\n".join(parts)
+
+
+def merge_page_boundaries(pages: list) -> list:
+    """
+    Merge incomplete sentences across page boundaries.
+
+    If a page ends mid-sentence (no sentence-ending punctuation),
+    prepend its trailing fragment to the next page's start.
+    """
+    if len(pages) < 2:
+        return pages
+
+    result = []
+    carry_over = ""
+
+    for i, page in enumerate(pages):
+        # Split page into metadata comment and content
+        lines = page.split('\n', 2)
+        if lines and lines[0].startswith('<!--'):
+            meta = lines[0]
+            content = '\n'.join(lines[1:]).strip()
+        else:
+            meta = ""
+            content = page.strip()
+
+        # Prepend carry-over from previous page
+        if carry_over:
+            content = carry_over + " " + content
+            carry_over = ""
+
+        # Check if this page's content ends mid-sentence
+        # Only for text/document pages (not diagrams with mermaid blocks)
+        if i < len(pages) - 1:
+            stripped = content.rstrip()
+            if stripped and not _ends_complete(stripped):
+                # Find the last complete sentence boundary
+                last_line = stripped.split('\n')[-1]
+                # Only carry over if the last line is a text fragment (not a heading, list, etc.)
+                if (last_line
+                        and not last_line.startswith('#')
+                        and not last_line.startswith('-')
+                        and not last_line.startswith('|')
+                        and not last_line.startswith('```')
+                        and not last_line.startswith('*')
+                        and not last_line.startswith('>')):
+                    # Remove last line from content, carry it to next page
+                    content_lines = content.rstrip().split('\n')
+                    carry_over = content_lines[-1]
+                    content = '\n'.join(content_lines[:-1]).rstrip()
+
+        # Reassemble
+        if meta:
+            result.append(f"{meta}\n\n{content}")
+        else:
+            result.append(content)
+
+    # If last page had carry-over (shouldn't happen but safety)
+    if carry_over and result:
+        result[-1] = result[-1].rstrip() + " " + carry_over
+
+    return result
+
+
+def _ends_complete(text: str) -> bool:
+    """Check if text ends with a complete sentence or structural element."""
+    stripped = text.rstrip()
+    if not stripped:
+        return True
+
+    last_char = stripped[-1]
+    # Sentence-ending punctuation
+    if last_char in '.!?:)]\u201d':
+        return True
+    # Ends with a code block
+    if stripped.endswith('```'):
+        return True
+    # Ends with a markdown heading
+    last_line = stripped.split('\n')[-1].strip()
+    if last_line.startswith('#'):
+        return True
+    # Ends with a list item that looks complete
+    if re.match(r'^[-*\d]+[.)]\s', last_line) and last_char in '.!?)':
+        return True
+
+    return False
