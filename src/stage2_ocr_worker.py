@@ -22,13 +22,13 @@ import os
 # =============================================================================
 
 PROMPTS = {
-    'text': "Convert the document to markdown. Preserve all text formatting, headers, lists, and structure.",
-    'document': "Convert the document to markdown. Preserve all text formatting, headers, lists, and structure.",
-    'figure': "Describe this image in detail.",
-    'diagram': "Describe this diagram in detail, including all elements, connections, and flow.",
-    'flowchart': "Describe this flowchart in detail, including all steps, decisions, and flow direction.",
-    'table': "Convert the document to markdown. Pay special attention to table formatting with proper alignment.",
-    'mixed': "Convert the document to markdown. Preserve all text, tables, and describe any images or diagrams.",
+    'text': "<image>\n<|grounding|>Convert the document to markdown.",
+    'document': "<image>\n<|grounding|>Convert the document to markdown.",
+    'figure': "<image>\nParse the figure.",
+    'diagram': "<image>\nDescribe this image in detail.",
+    'flowchart': "<image>\nDescribe this image in detail.",
+    'table': "<image>\n<|grounding|>Convert the document to markdown.",
+    'mixed': "<image>\n<|grounding|>Convert the document to markdown.",
 }
 
 
@@ -65,23 +65,80 @@ def ocr_single_page(model, tokenizer, image_path: str, classification: dict, tem
     Returns:
         dict: OCR result with 'text', 'classification', 'figures'
     """
+    import shutil
+
     prompt = get_prompt(classification)
 
     # DeepSeek-OCR-2 infer() API
-    # See: https://huggingface.co/deepseek-ai/DeepSeek-OCR-2
+    # model.infer() prints to stdout and writes to files — the return value is unreliable.
+    # We use save_results=True and read output from the filesystem.
     result = model.infer(
         tokenizer,
-        prompt=f"<image>\n{prompt}",
+        prompt=prompt,
         image_file=image_path,
         output_path=temp_dir,
         base_size=1024,
-        image_size=768,
+        image_size=640,
         crop_mode=True,
-        save_results=False,  # We handle output ourselves
+        save_results=True,
+        test_compress=False,
     )
 
+    # Extract text: check return value first, then fall back to output files
+    ocr_text = ""
+
+    if result and isinstance(result, str) and len(result.strip()) > 0:
+        ocr_text = result
+
+    # Check result.mmd file
+    if not ocr_text:
+        mmd_file = os.path.join(temp_dir, 'result.mmd')
+        if os.path.exists(mmd_file):
+            with open(mmd_file, 'r', encoding='utf-8') as f:
+                ocr_text = f.read()
+            os.remove(mmd_file)
+
+    # Check 'other' directories
+    if not ocr_text:
+        for root, dirs, files in os.walk(temp_dir):
+            if 'other' in dirs:
+                other_dir = os.path.join(root, 'other')
+                parts = []
+                for fname in sorted(os.listdir(other_dir)):
+                    fpath = os.path.join(other_dir, fname)
+                    if os.path.isfile(fpath):
+                        try:
+                            with open(fpath, 'r', encoding='utf-8') as f:
+                                content = f.read().strip()
+                                if content:
+                                    parts.append(content)
+                        except Exception:
+                            pass
+                if parts:
+                    ocr_text = '\n\n'.join(parts)
+                shutil.rmtree(other_dir, ignore_errors=True)
+                break
+
+    # Check for .md/.txt files
+    if not ocr_text:
+        for root, dirs, files in os.walk(temp_dir):
+            for fname in files:
+                if fname.endswith(('.md', '.txt')):
+                    fpath = os.path.join(root, fname)
+                    try:
+                        with open(fpath, 'r', encoding='utf-8') as f:
+                            content = f.read().strip()
+                            if content and len(content) > 10:
+                                ocr_text = content
+                                os.remove(fpath)
+                                break
+                    except Exception:
+                        pass
+            if ocr_text:
+                break
+
     return {
-        'text': result if isinstance(result, str) else str(result),
+        'text': ocr_text,
         'classification': classification,
         'figures': []
     }
@@ -118,34 +175,17 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
-    # Load model following official example:
-    # https://huggingface.co/deepseek-ai/DeepSeek-OCR-2
-    # model = model.eval().cuda().to(torch.bfloat16)
-    try:
-        model = AutoModel.from_pretrained(
-            model_path,
-            trust_remote_code=True,
-            _attn_implementation='flash_attention_2',
-            use_safetensors=True,
-        )
-        if args.verbose:
-            print(f"  Using flash_attention_2", flush=True)
-    except Exception as e:
-        if args.verbose:
-            print(f"  flash_attention_2 not available: {e}", flush=True)
-            print(f"  Falling back to eager attention", flush=True)
-        model = AutoModel.from_pretrained(
-            model_path,
-            trust_remote_code=True,
-            _attn_implementation='eager',
-            use_safetensors=True,
-        )
-
-    # Move to GPU - keep in float32 to avoid cuDNN issues with vision encoder
-    # The model will use autocast internally if needed
-    model = model.eval().cuda()
+    # Load model — use eager attention (flash-attn not installed) and bfloat16
+    model = AutoModel.from_pretrained(
+        model_path,
+        _attn_implementation='eager',
+        trust_remote_code=True,
+        use_safetensors=True,
+        torch_dtype=torch.bfloat16,
+        device_map={"": "cuda:0"},
+    ).eval()
     if args.verbose:
-        print(f"  Model on CUDA (float32)", flush=True)
+        print(f"  Model on CUDA (bfloat16, eager attention)", flush=True)
 
     if args.verbose:
         load_time = time.time() - load_start
