@@ -2,10 +2,12 @@
 import asyncio
 import logging
 import os
+import re
 import secrets
 import shutil
 import subprocess
 import sys
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -60,19 +62,41 @@ def _verify(creds: HTTPBasicCredentials = Depends(security)) -> str:
 # ---------------------------------------------------------------------------
 
 def _run_ocr_subprocess(job: dict) -> tuple[str, str, str]:
-    """Run OCR as subprocess so stdout/stderr are captured per-job."""
+    """Run OCR as subprocess, reading stdout live for progress updates."""
     cmd = [
         sys.executable, "/app/qwen_ocr.py",
         job["pdf_path"], job["output_path"],
         "--dpi", str(job["dpi"]),
         "--verbose",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        stderr = result.stderr.strip().splitlines()
-        last_lines = "\n".join(stderr[-10:]) if stderr else "unknown error"
-        raise RuntimeError(f"Pipeline failed (exit {result.returncode}):\n{last_lines}")
-    return job["output_path"], result.stdout, result.stderr
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    stdout_lines = []
+
+    def _read_stdout():
+        for line in proc.stdout:
+            stdout_lines.append(line)
+            # "Loaded N pages at ..."
+            m = re.search(r"Loaded (\d+) pages", line)
+            if m:
+                job["progress"] = f"0/{m.group(1)}"
+            # "Pages X-Y/N..."
+            m = re.search(r"Pages (\d+)-(\d+)/(\d+)", line)
+            if m:
+                job["progress"] = f"{m.group(2)}/{m.group(3)}"
+
+    t = threading.Thread(target=_read_stdout, daemon=True)
+    t.start()
+    stderr_output = proc.stderr.read()
+    t.join()
+    proc.wait()
+
+    if proc.returncode != 0:
+        stderr_lines = stderr_output.strip().splitlines()
+        last_lines = "\n".join(stderr_lines[-10:]) if stderr_lines else "unknown error"
+        raise RuntimeError(f"Pipeline failed (exit {proc.returncode}):\n{last_lines}")
+
+    return job["output_path"], "".join(stdout_lines), stderr_output
 
 
 async def worker_loop() -> None:
@@ -166,6 +190,7 @@ async def upload(
         "output_path":   output_path,
         "stdout":        None,
         "stderr":        None,
+        "progress":      None,
     }
     jobs[job_id] = job
     await job_queue.put(job_id)
@@ -186,6 +211,7 @@ async def list_jobs(_user: str = Depends(_verify)):
             "error_message":  j["error_message"],
             "dpi":            j["dpi"],
             "file_size_bytes":j["file_size_bytes"],
+            "progress":       j.get("progress"),
         }
         for j in sorted(jobs.values(), key=lambda j: j["created_at"], reverse=True)
     ]
@@ -208,6 +234,7 @@ async def get_job(job_id: str, _user: str = Depends(_verify)):
         "file_size_bytes":job["file_size_bytes"],
         "stdout":         job.get("stdout"),
         "stderr":         job.get("stderr"),
+        "progress":       job.get("progress"),
     }
 
 
