@@ -7,6 +7,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -263,3 +264,78 @@ async def delete_job(job_id: str, _user: str = Depends(_verify)):
     shutil.rmtree(OUTPUT_DIR / job_id, ignore_errors=True)
     del jobs[job_id]
     return {"status": "deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Marker-compatible API (obsidian-marker / self-hosted docker mode)
+# POST /convert  — drop-in replacement for marker_server
+# ---------------------------------------------------------------------------
+
+def _run_convert(pdf_path: str, output_path: str) -> str:
+    """Run OCR pipeline synchronously, return markdown string."""
+    cmd = [
+        sys.executable, "/app/qwen_ocr.py",
+        pdf_path, output_path,
+        "--dpi", os.environ.get("OCR_DPI", "200"),
+        "--verbose",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        lines = result.stderr.strip().splitlines()
+        raise RuntimeError("\n".join(lines[-10:]) if lines else "OCR failed")
+    return Path(output_path).read_text(encoding="utf-8")
+
+
+@app.post("/convert")
+async def marker_convert(
+    pdf_file: UploadFile = File(None),
+    document_file: UploadFile = File(None),
+    extract_images: bool = Form(False),
+):
+    """Marker-compatible /convert endpoint for obsidian-marker plugin."""
+    upload = pdf_file or document_file
+    if upload is None:
+        raise HTTPException(status_code=400, detail="pdf_file or document_file required")
+
+    loop = asyncio.get_event_loop()
+
+    with tempfile.TemporaryDirectory(prefix="marker_convert_") as tmp:
+        pdf_path = os.path.join(tmp, "input.pdf")
+        out_path = os.path.join(tmp, "output.md")
+
+        with open(pdf_path, "wb") as f:
+            while chunk := await upload.read(1024 * 1024):
+                f.write(chunk)
+
+        try:
+            markdown = await loop.run_in_executor(
+                None, _run_convert, pdf_path, out_path
+            )
+        except RuntimeError as e:
+            return {
+                "status": "error",
+                "result": None,
+                "error": str(e),
+            }
+
+    filename = upload.filename or "document.pdf"
+    # Count pages from markdown comments <!-- Page N -->
+    import re as _re
+    page_nums = _re.findall(r"<!-- Page (\d+) -->", markdown)
+    pages = int(page_nums[-1]) if page_nums else None
+
+    return {
+        "status": "ok",
+        "result": {
+            "filename": filename,
+            "markdown": markdown,
+            "metadata": {
+                "languages": None,
+                "toc": None,
+                "pages": pages,
+                "custom_metadata": {},
+            },
+            "images": {},
+            "status": "ok",
+        },
+    }
