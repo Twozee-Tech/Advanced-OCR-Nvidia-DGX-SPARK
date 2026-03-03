@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
@@ -24,6 +24,7 @@ logger = logging.getLogger("ocr-web")
 # ---------------------------------------------------------------------------
 WEB_USER   = os.environ.get("OCR_WEB_USER", "admin")
 WEB_PASS   = os.environ.get("OCR_WEB_PASS", "changeme")
+API_KEY    = os.environ.get("OCR_API_KEY", "")
 UPLOAD_DIR = Path("/data/uploads")
 OUTPUT_DIR = Path("/data/output")
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -288,11 +289,16 @@ def _run_convert(pdf_path: str, output_path: str) -> str:
 
 @app.post("/convert")
 async def marker_convert(
+    request: Request,
     pdf_file: UploadFile = File(None),
     document_file: UploadFile = File(None),
     extract_images: bool = Form(False),
 ):
     """Marker-compatible /convert endpoint for obsidian-marker plugin."""
+    if API_KEY and not secrets.compare_digest(
+        request.headers.get("X-API-Key", ""), API_KEY
+    ):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
     upload = pdf_file or document_file
     if upload is None:
         raise HTTPException(status_code=400, detail="pdf_file or document_file required")
