@@ -325,7 +325,7 @@ async def marker_convert(
     pages = int(page_nums[-1]) if page_nums else None
 
     return {
-        "status": "ok",
+        "status": "Success",
         "result": {
             "filename": filename,
             "markdown": markdown,
@@ -336,6 +336,6 @@ async def marker_convert(
                 "custom_metadata": {},
             },
             "images": {},
-            "status": "ok",
+            "status": "Success",
         },
     }
