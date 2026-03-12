@@ -26,7 +26,7 @@ PDF → page images (PyMuPDF) → llama.cpp (QWEN3.5) → strip </think> → Mar
 ## Deploy — Standard (any Linux with Docker)
 
 ```bash
-git clone https://github.com/Twozee-Tech/Advanced-OCR-LLM.git
+git clone https://github.com/Lukas-tek-no-logic/Advanced-OCR-LLM.git
 cd Advanced-OCR-LLM
 
 docker build -f docker/Dockerfile -t ocr-pipeline .
@@ -84,7 +84,7 @@ curl -fsSL https://get.docker.com | sh
 
 ```bash
 apt install -y git
-git clone https://github.com/Twozee-Tech/Advanced-OCR-LLM.git
+git clone https://github.com/Lukas-tek-no-logic/Advanced-OCR-LLM.git
 cd Advanced-OCR-LLM
 docker build -f docker/Dockerfile -t ocr-pipeline .
 ```

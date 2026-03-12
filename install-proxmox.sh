@@ -2,7 +2,7 @@
 # Advanced OCR LLM — Proxmox LXC Native Installer (no Docker)
 #
 # Run on the Proxmox HOST shell:
-#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Twozee-Tech/Advanced-OCR-LLM/main/install-proxmox.sh)"
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Lukas-tek-no-logic/Advanced-OCR-LLM/main/install-proxmox.sh)"
 #
 # Creates a Debian 12 LXC, installs Python 3.11 + uvicorn directly.
 # No Docker — lighter footprint (~80 MB RAM idle vs ~150 MB with Docker).
@@ -32,7 +32,7 @@ ask_secret() {
     echo "$reply"
 }
 
-REPO="Twozee-Tech/Advanced-OCR-LLM"
+REPO="Lukas-tek-no-logic/Advanced-OCR-LLM"
 APP_DIR="/opt/ocr"
 
 # ── banner ────────────────────────────────────────────────────────────────────
